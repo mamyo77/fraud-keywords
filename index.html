@@ -224,7 +224,7 @@ function renderDetail() {
   const comp=kw.source_count<=1?'매우 낮음':kw.source_count<=2?'낮음':'보통';
   const cc=kw.source_count<=2?'#34C759':'#FFD60A';
 
-  return `<div class="detail-panel" style="position:relative">
+  return `<div class="detail-panel">
     <button class="detail-close" onclick="state.selected=null;render()">✕</button>
     <div class="detail-title">
       <span style="width:10px;height:10px;border-radius:50%;background:${risk.color};box-shadow:0 0 12px ${risk.color}60"></span>
