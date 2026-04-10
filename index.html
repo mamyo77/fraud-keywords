@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사기 키워드 인텔리전스</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0A0C; --surface: rgba(255,255,255,0.02); --border: rgba(255,255,255,0.06);
+    --text: #F5F5F7; --text-dim: #8E8E93; --text-muted: #636366;
+    --red: #FF3B30; --orange: #FF9500; --yellow: #FFD60A; --green: #34C759; --blue: #5AC8FA;
+    --mono: 'DM Mono', monospace; --sans: 'Noto Sans KR', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+  .header { margin-bottom: 28px; }
+  .live-dot { width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:8px;animation:pulse 2s infinite; }
+  .live-dot.active { background:var(--green);box-shadow:0 0 8px rgba(52,199,89,0.6); }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+  .header h1 { font-size:28px;font-weight:800;background:linear-gradient(135deg,#F5F5F7,#8E8E93);-webkit-background-clip:text;-webkit-text-fill-color:transparent; }
+  .header p { font-size:13px;color:var(--text-muted); }
+
+  .controls { display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;align-items:center; }
+  .btn { padding:10px 18px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;font-family:var(--sans);transition:all 0.15s;display:flex;align-items:center;gap:6px;text-decoration:none; }
+  .btn:hover { background:rgba(255,255,255,0.06); }
+  .btn.primary { background:rgba(255,149,0,0.15);border-color:rgba(255,149,0,0.3);color:var(--orange); }
+
+  .stats { display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap; }
+  .stat-card { background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 22px;flex:1 1 180px;min-width:160px; }
+  .stat-label { font-size:12px;color:var(--text-dim);margin-bottom:6px; }
+  .stat-value { font-size:32px;font-weight:700;font-family:var(--mono);letter-spacing:-1px; }
+  .stat-sub { font-size:11px;color:var(--text-muted);margin-top:4px; }
+
+  .filters { display:flex;gap:8px;padding:14px 18px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border); }
+  .search-input,.filter-select { background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 14px;color:var(--text);font-size:13px;outline:none;font-family:var(--sans); }
+  .search-input { flex:1 1 180px;min-width:140px; }
+  .filter-select option { background:#1C1C1E; }
+
+  .table-wrap { background:var(--surface);border:1px solid var(--border);border-radius:20px;overflow:hidden; }
+  .table-header,.table-row { display:grid;grid-template-columns:40px 1fr 80px 100px 60px 90px;gap:8px;padding:12px 18px;align-items:center; }
+  .table-header { font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:0.5px;border-bottom:1px solid var(--border); }
+  .table-row { border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;transition:background 0.12s; }
+  .table-row:hover { background:rgba(255,255,255,0.03); }
+  .table-row.selected { background:rgba(255,149,0,0.06); }
+
+  .kw-name { font-size:14px;font-weight:600; }
+  .kw-sources { display:flex;gap:4px;margin-top:4px;flex-wrap:wrap; }
+  .source-tag { font-size:10px;padding:2px 6px;border-radius:4px; }
+  .risk-bar-wrap { display:flex;align-items:center;gap:8px; }
+  .risk-bar-bg { width:50px;height:5px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden; }
+  .risk-bar-fill { height:100%;border-radius:3px;transition:width 0.5s ease; }
+  .risk-pct { font-size:12px;font-family:var(--mono);min-width:32px; }
+
+  .layout { display:grid;gap:20px; }
+  .layout.with-detail { grid-template-columns:1fr 380px; }
+  .detail-panel { background:rgba(28,28,30,0.98);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:24px;position:sticky;top:24px;max-height:calc(100vh - 48px);overflow-y:auto; }
+  .detail-close { position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.06);border:none;border-radius:8px;width:30px;height:30px;color:var(--text-dim);cursor:pointer;font-size:14px; }
+  .detail-title { font-size:20px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:10px; }
+  .detail-grid { display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px; }
+  .detail-cell { background:rgba(255,255,255,0.03);border-radius:10px;padding:10px 14px; }
+  .detail-cell-label { font-size:11px;color:var(--text-dim); }
+  .detail-cell-value { font-size:14px;font-weight:600;margin-top:2px; }
+  .detail-section { margin-bottom:18px; }
+  .detail-section-title { font-size:12px;color:var(--text-dim);font-weight:600;margin-bottom:8px; }
+  .signal-tag { display:inline-block;font-size:11px;padding:4px 10px;border-radius:6px;background:rgba(255,59,48,0.1);color:#FF6961;border:1px solid rgba(255,59,48,0.15);margin:2px 4px 2px 0; }
+  .source-row { display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,255,255,0.02);border-radius:8px;margin-bottom:4px; }
+  .title-item { font-size:12px;color:#AEAEB2;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);line-height:1.5; }
+  .suggest-box { margin-top:18px;padding:14px 16px;border-radius:10px;background:rgba(255,149,0,0.06);border:1px solid rgba(255,149,0,0.12); }
+  .suggest-title { font-size:12px;color:var(--orange);font-weight:600;margin-bottom:4px; }
+  .suggest-text { font-size:12px;color:#AEAEB2;line-height:1.6; }
+
+  .toast { position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:12px;font-size:13px;z-index:1000;animation:slideUp 0.3s ease; }
+  @keyframes slideUp { from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1} }
+  .guide { margin-top:24px;padding:18px 22px;background:var(--surface);border:1px solid var(--border);border-radius:16px; }
+  .guide-title { font-size:13px;font-weight:700;margin-bottom:6px; }
+  .guide-text { font-size:12px;color:var(--text-dim);line-height:1.8; }
+  .guide-text code { font-family:var(--mono);color:var(--blue); }
+  .empty-state { padding:40px;text-align:center;color:var(--text-muted);font-size:14px; }
+
+  .upload-area { border:2px dashed rgba(255,255,255,0.1);border-radius:16px;padding:40px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:24px; }
+  .upload-area:hover { border-color:var(--orange);background:rgba(255,149,0,0.03); }
+  .upload-area.dragover { border-color:var(--green);background:rgba(52,199,89,0.05); }
+
+  @media (max-width:768px) {
+    .layout.with-detail { grid-template-columns:1fr; }
+    .table-header,.table-row { grid-template-columns:30px 1fr 60px 80px; }
+    .table-header>:nth-child(5),.table-row>:nth-child(5),.table-header>:nth-child(6),.table-row>:nth-child(6) { display:none; }
+    .detail-panel { position:static;max-height:none; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const SOURCE_LABELS = {
+  naver_cafe:{label:'네이버 카페',color:'#03C75A',icon:'📗'},
+  naver_blog:{label:'네이버 블로그',color:'#5AC8FA',icon:'📘'},
+  naver_news:{label:'네이버 뉴스',color:'#1EC800',icon:'📰'},
+  thecheat:{label:'더치트',color:'#FF3B30',icon:'🔴'},
+  fss:{label:'금감원',color:'#FFD60A',icon:'🏛️'},
+  datalab:{label:'데이터랩',color:'#A855F7',icon:'📊'},
+  google:{label:'구글',color:'#4285F4',icon:'🔍'},
+};
+const TREND = {
+  rising:{label:'급상승',color:'#FF3B30',icon:'📈'},
+  new:{label:'신규',color:'#FF9500',icon:'🆕'},
+  stable:{label:'유지',color:'#8E8E93',icon:'➖'},
+  unknown:{label:'미확인',color:'#636366',icon:'❓'},
+};
+
+function riskLevel(s) {
+  if(s>=0.8)return{label:'매우 높음',color:'#FF3B30'};
+  if(s>=0.6)return{label:'높음',color:'#FF9500'};
+  if(s>=0.4)return{label:'보통',color:'#FFD60A'};
+  return{label:'낮음',color:'#34C759'};
+}
+function timeAgo(d) {
+  if(!d||d==='never')return'없음';
+  const diff=Date.now()-new Date(d).getTime();
+  const m=Math.floor(diff/60000);
+  if(m<60)return m+'분 전';
+  const h=Math.floor(m/60);
+  if(h<24)return h+'시간 전';
+  return Math.floor(h/24)+'일 전';
+}
+
+let state = {
+  summary:{total_keywords:0,high_risk_count:0,sources_active:0,last_crawl:'never'},
+  trending:[], allKeywords:[], selected:null,
+  search:'', filterSource:'all', filterRisk:'all', sortBy:'risk_desc',
+  toast:null, dataLoaded:false,
+};
+
+// ── JSON 데이터 로드 (같은 폴더의 keywords.json) ──
+async function loadData() {
+  try {
+    const resp = await fetch('keywords.json?t='+Date.now());
+    if(!resp.ok) throw new Error('파일 없음');
+    const data = await resp.json();
+    state.summary = data.summary || state.summary;
+    state.trending = data.trending || [];
+    state.allKeywords = data.all_keywords || [];
+    state.dataLoaded = true;
+    showToast('✅ 데이터 로드 완료 ('+state.summary.total_keywords+'개 키워드)','#34C759');
+  } catch(e) {
+    console.log('keywords.json 없음, 파일 업로드 대기');
+    state.dataLoaded = false;
+  }
+  render();
+}
+
+// ── 파일 업로드 처리 ──
+function handleFileUpload(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      state.summary = data.summary || state.summary;
+      state.trending = data.trending || [];
+      state.allKeywords = data.all_keywords || [];
+      state.dataLoaded = true;
+      showToast('✅ 파일 로드 완료 ('+state.summary.total_keywords+'개 키워드)','#34C759');
+      render();
+    } catch(err) {
+      showToast('❌ JSON 파일 형식이 올바르지 않습니다','#FF3B30');
+      render();
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showToast(msg, color) {
+  state.toast = {msg,color};
+  render();
+  setTimeout(()=>{state.toast=null;render();},3000);
+}
+
+function getFiltered() {
+  let items = state.trending.map(t=>{
+    const detail = state.allKeywords.find(k=>k.keyword===t.keyword);
+    return {...t, search_volume_trend: detail?.search_volume_trend||'unknown'};
+  });
+  if(state.filterSource!=='all') items=items.filter(k=>k.sources?.includes(state.filterSource));
+  if(state.filterRisk==='high') items=items.filter(k=>k.max_score>=0.7);
+  if(state.filterRisk==='medium') items=items.filter(k=>k.max_score>=0.4&&k.max_score<0.7);
+  if(state.search) items=items.filter(k=>k.keyword.toLowerCase().includes(state.search.toLowerCase()));
+
+  switch(state.sortBy){
+    case'mentions_asc':items.sort((a,b)=>a.total_mentions-b.total_mentions);break;
+    case'mentions_desc':items.sort((a,b)=>b.total_mentions-a.total_mentions);break;
+    case'risk_asc':items.sort((a,b)=>a.max_score-b.max_score);break;
+    case'risk_desc':items.sort((a,b)=>b.max_score-a.max_score);break;
+    case'sources_desc':items.sort((a,b)=>b.source_count-a.source_count);break;
+    case'newest':items.sort((a,b)=>{
+      const da=state.allKeywords.find(k=>k.keyword===a.keyword)?.first_seen||'';
+      const db2=state.allKeywords.find(k=>k.keyword===b.keyword)?.first_seen||'';
+      return db2.localeCompare(da);
+    });break;
+  }
+  return items;
+}
+
+function renderDetail() {
+  const kw=state.selected;if(!kw)return'';
+  const details=state.allKeywords.filter(k=>k.keyword===kw.keyword);
+  const risk=riskLevel(kw.max_score);
+  const allSignals=[...new Set(details.flatMap(d=>d.related_signals||[]))];
+  const allTitles=[...new Set(details.flatMap(d=>d.sample_titles||[]))].slice(0,6);
+  const firstSeen=details.reduce((m,d)=>d.first_seen<m?d.first_seen:m,details[0]?.first_seen||'');
+  const lastSeen=details.reduce((m,d)=>d.last_seen>m?d.last_seen:m,details[0]?.last_seen||'');
+  const comp=kw.source_count<=1?'매우 낮음':kw.source_count<=2?'낮음':'보통';
+  const cc=kw.source_count<=2?'#34C759':'#FFD60A';
+
+  return `<div class="detail-panel" style="position:relative">
+    <button class="detail-close" onclick="state.selected=null;render()">✕</button>
+    <div class="detail-title">
+      <span style="width:10px;height:10px;border-radius:50%;background:${risk.color};box-shadow:0 0 12px ${risk.color}60"></span>
+      ${kw.keyword}
+      <span style="font-size:11px;padding:3px 10px;border-radius:6px;background:${risk.color}18;color:${risk.color};font-weight:600">위험도 ${risk.label}</span>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-cell"><div class="detail-cell-label">총 언급</div><div class="detail-cell-value" style="font-family:var(--mono);font-size:22px">${kw.total_mentions}</div></div>
+      <div class="detail-cell"><div class="detail-cell-label">최초 발견</div><div class="detail-cell-value" style="font-size:13px">${timeAgo(firstSeen)}</div></div>
+      <div class="detail-cell"><div class="detail-cell-label">최근 활동</div><div class="detail-cell-value" style="font-size:13px">${timeAgo(lastSeen)}</div></div>
+    </div>
+    <div class="detail-section"><div class="detail-section-title">탐지 시그널</div>${allSignals.map(s=>`<span class="signal-tag">⚠ ${s}</span>`).join('')||'<span style="color:var(--text-muted);font-size:12px">시그널 없음</span>'}</div>
+    <div class="detail-section"><div class="detail-section-title">출처별 데이터</div>${details.map(d=>{
+      const src=SOURCE_LABELS[d.source]||{icon:'📄',label:d.source,color:'#999'};
+      return`<div class="source-row"><span>${src.icon}</span><span style="color:${src.color};flex:1;font-size:13px">${src.label}</span><span style="font-size:12px;color:var(--text-dim);font-family:var(--mono)">${d.mention_count}건</span></div>`;
+    }).join('')}</div>
+    <div class="detail-section"><div class="detail-section-title">관련 게시글 제목</div>${allTitles.map(t=>`<div class="title-item">"${t}"</div>`).join('')||'<span style="color:var(--text-muted);font-size:12px">제목 없음</span>'}</div>
+    <div class="suggest-box">
+      <div class="suggest-title">💡 콘텐츠 선점 제안</div>
+      <div class="suggest-text">
+        "<strong>${kw.keyword} 사기 피해 대응방법</strong>" 키워드로 블로그 포스팅 권장<br>
+        "<strong>${kw.keyword} 환불 가능할까</strong>" 파워링크 광고 등록 권장<br>
+        현재 네이버 검색 경쟁도: <span style="color:${cc}">${comp}</span> → 선점 적기
+      </div>
+    </div>
+  </div>`;
+}
+
+function render() {
+  const app=document.getElementById('app');
+  const s=state.summary;
+  const filtered=getFiltered();
+
+  let html=`
+    <div class="header">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span class="live-dot active"></span>
+        <span style="font-size:11px;color:#34C759;font-family:var(--mono);letter-spacing:1px">KEYWORD INTELLIGENCE</span>
+      </div>
+      <h1>사기 키워드 인텔리전스</h1>
+      <p>투자사기 키워드 자동 수집 · 분석 · 선점 대시보드</p>
+    </div>
+
+    <div class="controls">
+      <label class="btn primary" style="cursor:pointer">
+        📂 JSON 파일 업로드
+        <input type="file" accept=".json" style="display:none" onchange="if(this.files[0])handleFileUpload(this.files[0])">
+      </label>
+      <button class="btn" onclick="loadData()">🔃 새로고침</button>
+    </div>`;
+
+  if(!state.dataLoaded && state.trending.length===0) {
+    html+=`
+    <div class="upload-area" id="dropzone"
+      ondragover="event.preventDefault();this.classList.add('dragover')"
+      ondragleave="this.classList.remove('dragover')"
+      ondrop="event.preventDefault();this.classList.remove('dragover');if(event.dataTransfer.files[0])handleFileUpload(event.dataTransfer.files[0])">
+      <div style="font-size:48px;margin-bottom:16px">📁</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px">keywords.json 파일을 여기에 드래그하세요</div>
+      <div style="font-size:13px;color:var(--text-dim)">로컬 크롤러에서 내보낸 JSON 파일 또는 같은 폴더에 keywords.json을 배치하면 자동 로드됩니다</div>
+    </div>`;
+  }
+
+  html+=`
+    <div class="stats">
+      <div class="stat-card"><div class="stat-label">🎯 수집 키워드</div><div class="stat-value">${s.total_keywords}</div><div class="stat-sub">전체 누적</div></div>
+      <div class="stat-card"><div class="stat-label">🔴 고위험 키워드</div><div class="stat-value" style="color:var(--red)">${s.high_risk_count}</div><div class="stat-sub">위험도 70%+</div></div>
+      <div class="stat-card"><div class="stat-label">📡 모니터링 채널</div><div class="stat-value" style="color:var(--blue)">${s.sources_active}</div><div class="stat-sub">활성 채널</div></div>
+      <div class="stat-card"><div class="stat-label">⏱ 마지막 수집</div><div class="stat-value" style="font-size:20px;color:var(--yellow)">${timeAgo(s.last_crawl)}</div></div>
+    </div>
+
+    <div class="layout ${state.selected?'with-detail':''}">
+      <div class="table-wrap">
+        <div class="filters">
+          <input class="search-input" id="kw-search" type="text" placeholder="키워드 검색..."
+            value="${state.search}" onchange="state.search=this.value;render()"
+            onkeyup="if(!event.isComposing&&event.key==='Enter'){state.search=this.value;render()}">
+          <button class="btn" onclick="state.search=document.getElementById('kw-search').value;render()" style="padding:8px 14px">🔍</button>
+          <select class="filter-select" onchange="state.filterSource=this.value;render()">
+            <option value="all">전체 출처</option>
+            ${Object.entries(SOURCE_LABELS).map(([k,v])=>`<option value="${k}" ${state.filterSource===k?'selected':''}>${v.icon} ${v.label}</option>`).join('')}
+          </select>
+          <select class="filter-select" onchange="state.filterRisk=this.value;render()">
+            <option value="all">전체 위험도</option>
+            <option value="high" ${state.filterRisk==='high'?'selected':''}>🔴 고위험</option>
+            <option value="medium" ${state.filterRisk==='medium'?'selected':''}>🟡 중위험</option>
+          </select>
+          <select class="filter-select" onchange="state.sortBy=this.value;render()">
+            <option value="risk_desc" ${state.sortBy==='risk_desc'?'selected':''}>위험도 높은순</option>
+            <option value="risk_asc" ${state.sortBy==='risk_asc'?'selected':''}>위험도 낮은순</option>
+            <option value="mentions_desc" ${state.sortBy==='mentions_desc'?'selected':''}>언급 많은순</option>
+            <option value="mentions_asc" ${state.sortBy==='mentions_asc'?'selected':''}>언급 적은순</option>
+            <option value="sources_desc" ${state.sortBy==='sources_desc'?'selected':''}>출처 많은순</option>
+            <option value="newest" ${state.sortBy==='newest'?'selected':''}>최신 발견순</option>
+          </select>
+        </div>
+        <div class="table-header">
+          <span style="text-align:center">#</span><span>키워드</span>
+          <span style="text-align:center">언급수</span><span>위험도</span>
+          <span style="text-align:center">출처</span><span style="text-align:right">트렌드</span>
+        </div>
+        ${filtered.length>0?filtered.map((kw,i)=>{
+          const risk=riskLevel(kw.max_score);const trend=TREND[kw.search_volume_trend]||TREND.unknown;
+          const sel=state.selected?.keyword===kw.keyword;
+          return`<div class="table-row ${sel?'selected':''}" onclick='selectKw(${JSON.stringify(kw).replace(/'/g,"&#39;")})'>
+            <span style="font-size:13px;color:var(--text-muted);font-family:var(--mono);text-align:center">${i+1}</span>
+            <div><span class="kw-name">${kw.keyword}</span><div class="kw-sources">${(kw.sources||[]).map(ss=>{
+              const src=SOURCE_LABELS[ss]||{label:ss,color:'#666'};
+              return`<span class="source-tag" style="background:${src.color}18;color:${src.color}">${src.label}</span>`;
+            }).join('')}</div></div>
+            <div><div style="font-size:15px;font-weight:600;font-family:var(--mono);text-align:center">${kw.total_mentions}</div><div style="font-size:10px;color:var(--text-muted);text-align:center">언급</div></div>
+            <div class="risk-bar-wrap"><div class="risk-bar-bg"><div class="risk-bar-fill" style="width:${kw.max_score*100}%;background:${risk.color}"></div></div><span class="risk-pct" style="color:${risk.color}">${(kw.max_score*100).toFixed(0)}%</span></div>
+            <span style="font-size:12px;color:var(--text-dim);text-align:center">${kw.source_count}</span>
+            <span style="font-size:11px;color:${trend.color};text-align:right">${trend.icon} ${trend.label}</span>
+          </div>`;
+        }).join(''):'<div class="empty-state">데이터가 없습니다. JSON 파일을 업로드하거나 keywords.json을 같은 폴더에 배치해주세요.</div>'}
+      </div>
+      ${state.selected?renderDetail():''}
+    </div>
+
+    <div class="guide">
+      <div class="guide-title">⚡ 사용 가이드</div>
+      <div class="guide-text">
+        <span style="color:var(--orange)">1.</span> 로컬 PC에서 <code>python server.py</code> 실행 → <strong>📥 JSON 내보내기</strong>로 데이터 다운로드<br>
+        <span style="color:var(--orange)">2.</span> 다운받은 <code>keywords.json</code>을 이 페이지에 업로드하거나 GitHub에 push<br>
+        <span style="color:var(--orange)">3.</span> 위험도 70%+ & 트렌드 📈급상승 키워드를 우선 선점<br>
+        <span style="color:var(--orange)">4.</span> 키워드 클릭 → 상세 분석 + 콘텐츠 선점 제안 확인
+      </div>
+    </div>`;
+
+  if(state.toast) html+=`<div class="toast" style="background:${state.toast.color}20;border:1px solid ${state.toast.color}40;color:${state.toast.color}">${state.toast.msg}</div>`;
+  app.innerHTML=html;
+}
+
+function selectKw(kw){state.selected=(state.selected?.keyword===kw.keyword)?null:kw;render();}
+
+loadData();
+render();
+</script>
+</body>
+</html>
