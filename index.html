@@ -192,6 +192,10 @@ function getFiltered() {
   if(state.filterSource!=='all') items=items.filter(k=>k.sources?.includes(state.filterSource));
   if(state.filterRisk==='high') items=items.filter(k=>k.max_score>=0.7);
   if(state.filterRisk==='medium') items=items.filter(k=>k.max_score>=0.4&&k.max_score<0.7);
+  if(state.filterRisk==='unregistered') items=items.filter(k=>{
+    const d=state.allKeywords.filter(a=>a.keyword===k.keyword);
+    return[...new Set(d.flatMap(x=>x.related_signals||[]))].some(s=>s.includes('미등록'));
+  });
   if(state.search) items=items.filter(k=>k.keyword.toLowerCase().includes(state.search.toLowerCase()));
 
   switch(state.sortBy){
@@ -307,6 +311,7 @@ function render() {
             <option value="all">전체 위험도</option>
             <option value="high" ${state.filterRisk==='high'?'selected':''}>🔴 고위험</option>
             <option value="medium" ${state.filterRisk==='medium'?'selected':''}>🟡 중위험</option>
+            <option value="unregistered" ${state.filterRisk==='unregistered'?'selected':''}>⚠️ 미등록업체만</option>
           </select>
           <select class="filter-select" onchange="state.sortBy=this.value;render()">
             <option value="risk_desc" ${state.sortBy==='risk_desc'?'selected':''}>위험도 높은순</option>
@@ -325,9 +330,12 @@ function render() {
         ${filtered.length>0?filtered.map((kw,i)=>{
           const risk=riskLevel(kw.max_score);const trend=TREND[kw.search_volume_trend]||TREND.unknown;
           const sel=state.selected?.keyword===kw.keyword;
+          const kwDetails=state.allKeywords.filter(k=>k.keyword===kw.keyword);
+          const kwSignals=[...new Set(kwDetails.flatMap(d=>d.related_signals||[]))];
+          const isUnreg=kwSignals.some(s=>s.includes('미등록'));
           return`<div class="table-row ${sel?'selected':''}" onclick='selectKw(${JSON.stringify(kw).replace(/'/g,"&#39;")})'>
             <span style="font-size:13px;color:var(--text-muted);font-family:var(--mono);text-align:center">${i+1}</span>
-            <div><span class="kw-name">${kw.keyword}</span><div class="kw-sources">${(kw.sources||[]).map(ss=>{
+            <div><span class="kw-name">${kw.keyword}</span>${isUnreg?'<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(255,59,48,0.15);color:#FF6961;margin-left:6px;font-weight:600">⚠️ 미등록</span>':''}<div class="kw-sources">${(kw.sources||[]).map(ss=>{
               const src=SOURCE_LABELS[ss]||{label:ss,color:'#666'};
               return`<span class="source-tag" style="background:${src.color}18;color:${src.color}">${src.label}</span>`;
             }).join('')}</div></div>
